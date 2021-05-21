@@ -1,6 +1,7 @@
 from flask import Blueprint, request
 from flask.helpers import make_response
 from bson.objectid import ObjectId
+from pymongo.collection import ReturnDocument
 
 from src.utils.validation_utils import validate_body_request_data
 from src.utils.database_utils import insert_one_document
@@ -95,5 +96,95 @@ def build_moral_persons_blueprint(mongo_client, database, SECRET_KEY):
             ))
 
         return resulting_response
+
+    @moral_persons_bp.route('/moral_persons/<id>/addresses', methods=['PATCH'])
+    def change_curret_address(id):
+
+        if 'is_new_direction' not in request.json.keys():
+            resulting_response = make_response((
+                {'error' : 'Missing information'}, 
+                400, 
+                {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+            ))
+            return resulting_response
+
+        if request.json['is_new_direction']:
+            # Crear nueva dirección.
+
+            neccesary_data = ["street", "external_number", "internal_number", "suburb", "postal_code","town"]
+            is_data_complete = validate_body_request_data(request.json, neccesary_data)
+            if is_data_complete:
+                # Información necesaria completa.
+
+                previous_information = moral_persons_collection.find_one({'_id' : ObjectId(id)})
+                last_address_id = len(previous_information['addresses'])
+
+                new_address = {
+                    'street' : request.json['street'],
+                    'external_number' : request.json['external_number'],
+                    'internal_number' : request.json['internal_number'],
+                    'suburb' : request.json['suburb'],
+                    'postal_code' : request.json['postal_code'],
+                    'town' : request.json['town'],
+                }
+
+                new_moral_person_information = moral_persons_collection.find_one_and_update(
+                    {'_id' : ObjectId(id)},
+                    {'$set' : {"actual_address" : last_address_id}, '$push' : {'addresses' : new_address}},
+                    return_document = ReturnDocument.AFTER
+                )
+
+                new_moral_person_information.pop('_id')
+                new_moral_person_information['_id'] = str(id)                
+
+                resulting_response = make_response((
+                    new_moral_person_information,
+                    200,
+                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                ))
+                return resulting_response
+
+            else:
+                resulting_response = make_response((
+                    {'error' : 'Missing information'}, 
+                    400, 
+                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                ))
+                return resulting_response
+        else:
+            if 'previous_new_direction' not in request.json.keys():
+                resulting_response = make_response((
+                    {'error' : 'Missing information'}, 
+                    400, 
+                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                ))
+                return resulting_response
+            
+            moral_person_info = moral_persons_collection.find_one({'_id' : ObjectId(id)})
+            number_addresses = len(moral_person_info['addresses'])           
+
+            if request.json['previous_new_direction'] < 0 or request.json['previous_new_direction'] >= number_addresses:
+                resulting_response = make_response((
+                    {'error' : 'Incorrect information'}, 
+                    400, 
+                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                ))
+                return resulting_response
+            
+            new_moral_person_information = moral_persons_collection.find_one_and_update(
+                {"_id" : ObjectId(id)},
+                {"$set" : {'actual_address' : request.json['previous_new_direction']}},
+                return_document=ReturnDocument.AFTER
+            )
+
+            new_moral_person_information.pop('_id')
+            new_moral_person_information['_id'] = str(id)
+
+            resulting_response = make_response((
+                new_moral_person_information,
+                200,
+                {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+            ))
+            return resulting_response            
 
     return moral_persons_bp
