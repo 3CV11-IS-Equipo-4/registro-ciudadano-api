@@ -2,6 +2,11 @@ from flask import Flask
 import pymongo
 from os import environ
 
+
+# Flask's blueprints.
+from src.moral_persons.moral_persons import build_moral_persons_blueprint
+from src.physical_persons.physical_persons import build_physical_persons_blueprint
+
 app = Flask(__name__)
 
 # Environmental variables config.
@@ -29,6 +34,9 @@ physical_persons_table = database.physical_persons
 @app.route('/')
 def welcome():
     return 'The API is online.'
+
+app.register_blueprint(build_physical_persons_blueprint(client, database, app.secret_key))
+app.register_blueprint(build_moral_persons_blueprint(client, database, app.secret_key))
 
 if __name__ == "__main__":
     app.runt(host='0.0.0.0', port=8000, debug=True)
