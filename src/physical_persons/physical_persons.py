@@ -3,7 +3,7 @@ from flask import Blueprint, request, render_template
 from bson.objectid import ObjectId
 from pymongo.collection import ReturnDocument
 from src.utils.validation_utils import validate_google_id_token
-from src.physical_persons.auth_pp import encode_auth_token_physical_person
+from src.physical_persons.auth_pp import decode_auth_token_physical_person, encode_auth_token_physical_person, validate_authorization
 
 
 from src.utils.validation_utils import validate_body_request_data
@@ -55,10 +55,9 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
                 'mimetype':'application/json'
                 })
 
-        return make_response(({"authentication": True, "key" : generated_token}, 200, {
+        return make_response(({"authentication": True, "key_pp" : generated_token}, 200, {
             'Access-Control-Allow-Origin': '*', 
             'mimetype':'application/json'}))        
-
 
     @physical_persons_bp.route('/physical_persons', methods=['POST'])
     def register_physical_person():
@@ -145,64 +144,143 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
     @physical_persons_bp.route('/physical_persons/<id>', methods=['GET'])
     def query_physical_person_information(id):
 
-        physical_person_info = physical_persons_table.find_one({'_id' : ObjectId(id)})
-        if physical_person_info is None:
-            resulting_response = make_response((
-                {'error' : 'Invalid information'}, 
-                400, 
-                {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
-            ))
-        else:
-            id_copy = physical_person_info['_id']
-            physical_person_info.pop('_id')
-            physical_person_info['_id'] = str(id_copy)
-            resulting_response = make_response((
-                physical_person_info, 
-                200, 
-                {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
-            ))
+        authorization_header_validation = validate_authorization(request)
+        if len(authorization_header_validation) != 0:
+            return authorization_header_validation
 
-        return resulting_response
+        decoded_token = decode_auth_token_physical_person(request.headers["Authorization"].split()[1], SECRET_KEY)
+        if decoded_token == -1:
+            return make_response({"error" : "Sesión expirada."}, 
+                                 400, 
+                                 {'Access-Control-Allow-Origin': '*', 
+                                    'mimetype':'application/json'})
+        elif decoded_token == -2:
+            return make_response({"error" : "Ciudadano inválido"}, 
+                                 400, 
+                                 {'Access-Control-Allow-Origin': '*', 
+                                    'mimetype':'application/json'})
+
+        else:          
+
+            physical_person_info = physical_persons_table.find_one({'_id' : ObjectId(id)})
+            if physical_person_info is None:
+                resulting_response = make_response((
+                    {'error' : 'Invalid information'}, 
+                    400, 
+                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                ))
+            else:
+                id_copy = physical_person_info['_id']
+                physical_person_info.pop('_id')
+                physical_person_info['_id'] = str(id_copy)
+                resulting_response = make_response((
+                    physical_person_info, 
+                    200, 
+                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                ))
+            
+            return resulting_response
 
     @physical_persons_bp.route('/physical_persons/<id>/addresses', methods=['PATCH'])
     def change_current_address(id):
         
-        if 'is_new_direction' not in request.json.keys():
-            resulting_response = make_response((
-                {'error' : 'Missing information'}, 
-                400, 
-                {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
-            ))
-            return resulting_response
-        
-        if request.json['is_new_direction']:
-            # Crear nueva dirección.
+        authorization_header_validation = validate_authorization(request)
+        if len(authorization_header_validation) != 0:
+            return authorization_header_validation
 
-            neccesary_data = ["street", "external_number", "internal_number", "suburb", "postal_code","town"]
-            is_data_complete = validate_body_request_data(request.json, neccesary_data)
-            if is_data_complete:
-                # Información necesaria completa.
+        decoded_token = decode_auth_token_physical_person(request.headers["Authorization"].split()[1], SECRET_KEY)
+        if decoded_token == -1:
+            return make_response({"error" : "Sesión expirada."}, 
+                                 400, 
+                                 {'Access-Control-Allow-Origin': '*', 
+                                    'mimetype':'application/json'})
+        elif decoded_token == -2:
+            return make_response({"error" : "Ciudadano inválido"}, 
+                                 400, 
+                                 {'Access-Control-Allow-Origin': '*', 
+                                    'mimetype':'application/json'})
 
-                previous_information = physical_persons_table.find_one({'_id' : ObjectId(id)})
-                last_address_id = len(previous_information['addresses'])
+        else:        
 
-                new_address = {
-                    'street' : request.json['street'],
-                    'external_number' : request.json['external_number'],
-                    'internal_number' : request.json['internal_number'],
-                    'suburb' : request.json['suburb'],
-                    'postal_code' : request.json['postal_code'],
-                    'town' : request.json['town'],
-                }
+            if 'is_new_direction' not in request.json.keys():
+                resulting_response = make_response((
+                    {'error' : 'Missing information'}, 
+                    400, 
+                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                ))
+                return resulting_response
+            
+            if request.json['is_new_direction']:
+                # Crear nueva dirección.
 
+                neccesary_data = ["street", "external_number", "internal_number", "suburb", "postal_code","town"]
+                is_data_complete = validate_body_request_data(request.json, neccesary_data)
+                if is_data_complete:
+                    # Información necesaria completa.
+
+                    previous_information = physical_persons_table.find_one({'_id' : ObjectId(id)})
+                    last_address_id = len(previous_information['addresses'])
+
+                    new_address = {
+                        'street' : request.json['street'],
+                        'external_number' : request.json['external_number'],
+                        'internal_number' : request.json['internal_number'],
+                        'suburb' : request.json['suburb'],
+                        'postal_code' : request.json['postal_code'],
+                        'town' : request.json['town'],
+                    }
+
+                    new_physical_person_information = physical_persons_table.find_one_and_update(
+                        {'_id' : ObjectId(id)},
+                        {'$set' : {"actual_address" : last_address_id}, '$push' : {'addresses' : new_address}},
+                        return_document = ReturnDocument.AFTER
+                    )
+
+                    new_physical_person_information.pop('_id')
+                    new_physical_person_information['_id'] = str(id)                
+
+                    resulting_response = make_response((
+                        new_physical_person_information,
+                        200,
+                        {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                    ))
+                    return resulting_response
+
+                else:
+                    resulting_response = make_response((
+                        {'error' : 'Missing information'}, 
+                        400, 
+                        {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                    ))
+                    return resulting_response
+            else:
+                if 'previous_new_direction' not in request.json.keys():
+                    resulting_response = make_response((
+                        {'error' : 'Missing information'}, 
+                        400, 
+                        {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                    ))
+                    return resulting_response
+                
+                physical_person_info = physical_persons_table.find_one({'_id' : ObjectId(id)})
+                number_addresses = len(physical_person_info['addresses'])           
+
+                if request.json['previous_new_direction'] < 0 or request.json['previous_new_direction'] >= number_addresses:
+                    resulting_response = make_response((
+                        {'error' : 'Incorrect information'}, 
+                        400, 
+                        {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                    ))
+                    return resulting_response
+                
                 new_physical_person_information = physical_persons_table.find_one_and_update(
-                    {'_id' : ObjectId(id)},
-                    {'$set' : {"actual_address" : last_address_id}, '$push' : {'addresses' : new_address}},
-                    return_document = ReturnDocument.AFTER
+                    {"_id" : ObjectId(id)},
+                    {"$set" : {'actual_address' : request.json['previous_new_direction']}},
+                    return_document=ReturnDocument.AFTER
                 )
 
                 new_physical_person_information.pop('_id')
-                new_physical_person_information['_id'] = str(id)                
+                new_physical_person_information['_id'] = str(id)
 
                 resulting_response = make_response((
                     new_physical_person_information,
@@ -210,48 +288,5 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
                     {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
                 ))
                 return resulting_response
-
-            else:
-                resulting_response = make_response((
-                    {'error' : 'Missing information'}, 
-                    400, 
-                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
-                ))
-                return resulting_response
-        else:
-            if 'previous_new_direction' not in request.json.keys():
-                resulting_response = make_response((
-                    {'error' : 'Missing information'}, 
-                    400, 
-                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
-                ))
-                return resulting_response
-            
-            physical_person_info = physical_persons_table.find_one({'_id' : ObjectId(id)})
-            number_addresses = len(physical_person_info['addresses'])           
-
-            if request.json['previous_new_direction'] < 0 or request.json['previous_new_direction'] >= number_addresses:
-                resulting_response = make_response((
-                    {'error' : 'Incorrect information'}, 
-                    400, 
-                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
-                ))
-                return resulting_response
-            
-            new_physical_person_information = physical_persons_table.find_one_and_update(
-                {"_id" : ObjectId(id)},
-                {"$set" : {'actual_address' : request.json['previous_new_direction']}},
-                return_document=ReturnDocument.AFTER
-            )
-
-            new_physical_person_information.pop('_id')
-            new_physical_person_information['_id'] = str(id)
-
-            resulting_response = make_response((
-                new_physical_person_information,
-                200,
-                {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
-            ))
-            return resulting_response
 
     return physical_persons_bp

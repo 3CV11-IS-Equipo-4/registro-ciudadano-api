@@ -31,3 +31,34 @@ def encode_auth_token_physical_person(email, names, first_surname, physical_pers
 
     except Exception as e:
         return None
+
+def decode_auth_token_physical_person(auth_token, SECRET_KEY):
+    """
+    Decode the recivied token.
+    """
+
+    try:
+        payload = jwt.decode(auth_token, SECRET_KEY, algorithms=['HS256'])
+        return payload['sub']
+    except jwt.ExpiredSignatureError:
+        return -1
+    except jwt.InvalidTokenError:
+        return -2    
+
+def validate_authorization(request):
+    """ Checks if the requests contains a valid authorization header with the specified format.
+
+    """
+
+    if 'Authorization' not in request.headers:
+        return ({"error" : "Autorización inválida."}, 400, 
+                        {'Access-Control-Allow-Origin': '*', 
+                        'mimetype':'application/json'})
+    else:
+        contenido_authorization = request.headers["Authorization"].split()
+        if len(contenido_authorization) != 2 or contenido_authorization[0] != "Bearer":
+            return ({"error" : "Autorización inválida."}, 400, 
+                                    {'Access-Control-Allow-Origin': '*', 
+                                    'mimetype':'application/json'})
+        else:
+            return tuple()        
