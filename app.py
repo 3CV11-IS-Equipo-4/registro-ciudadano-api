@@ -13,6 +13,7 @@ app = Flask(__name__)
 CONNECTION_URL = environ.get('CONNECTION_URL')
 DB_NAME = environ.get('DB_NAME')
 SECRET_KEY = environ.get('SECRET_KEY')
+GOOGLE_CLIENT_ID = environ.get('GOOGLE_CLIENT_ID')
 
 if CONNECTION_URL[0] == chr(34) and CONNECTION_URL[-1] == chr(34):
 	client = pymongo.MongoClient(CONNECTION_URL[1:-1]) 
@@ -35,7 +36,7 @@ physical_persons_table = database.physical_persons
 def welcome():
     return 'The API is online.'
 
-app.register_blueprint(build_physical_persons_blueprint(client, database, app.secret_key))
+app.register_blueprint(build_physical_persons_blueprint(client, database, app.secret_key, GOOGLE_CLIENT_ID))
 app.register_blueprint(build_moral_persons_blueprint(client, database, app.secret_key))
 
 if __name__ == "__main__":

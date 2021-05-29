@@ -1,30 +1,85 @@
 from flask.helpers import make_response
-from flask import Blueprint, request
+from flask import Blueprint, request, render_template
 from bson.objectid import ObjectId
 from pymongo.collection import ReturnDocument
+from src.utils.validation_utils import validate_google_id_token
+from src.physical_persons.auth_pp import encode_auth_token_physical_person
+
 
 from src.utils.validation_utils import validate_body_request_data
 from src.utils.database_utils import insert_one_document
 
-def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY):
+def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_CLIENT_ID):
 
     physical_persons_bp = Blueprint('physical_persons_bp', __name__)
 
     physical_persons_table = database.physical_persons
 
+
+    @physical_persons_bp.route('/physical_persons/login_google', methods=['POST'])
+    def login_physical_person():
+        
+        if 'google_id_token' not in request.json.keys():
+            return make_response({"authentication": "Sin id token"}, 400, {
+                'Access-Control-Allow-Origin': '*', 
+                'mimetype':'application/json'
+                })
+
+        is_authenticated, id_info = validate_google_id_token(request.json['google_id_token'], GOOGLE_CLIENT_ID)
+
+        if not is_authenticated :
+            return make_response({"authentication": "ID no autenticado."}, 400, {
+                'Access-Control-Allow-Origin': '*', 
+                'mimetype':'application/json'
+                })
+
+        found_physical_person = physical_persons_table.find_one({'google_email' : id_info['email']})
+
+        if found_physical_person is None:
+            return make_response({"authentication": "Persona no encontrada"}, 400, {
+                'Access-Control-Allow-Origin': '*', 
+                'mimetype':'application/json'
+                })
+
+        generated_token = encode_auth_token_physical_person(
+            id_info['email'],
+            found_physical_person['names'],
+            found_physical_person['first_surname'],
+            found_physical_person['_id'],
+            SECRET_KEY
+        )
+
+        if generated_token is None:
+            return make_response({"authentication": "Excepctión"}, 400, {
+                'Access-Control-Allow-Origin': '*', 
+                'mimetype':'application/json'
+                })
+
+        return make_response(({"authentication": True, "key" : generated_token}, 200, {
+            'Access-Control-Allow-Origin': '*', 
+            'mimetype':'application/json'}))        
+
+
     @physical_persons_bp.route('/physical_persons', methods=['POST'])
     def register_physical_person():
 
         neccesary_data = [
-            "CURP", "RFC", "names", "first_surname", "second_surname", "birth_date",
-            "street", "external_number", "internal_number", "suburb", "postal_code",
-            "town", "google_email"]
+            'CURP', 'RFC', 'names', 'first_surname', 'second_surname', 'birth_date',
+            'street', 'external_number', 'internal_number', 'suburb', 'postal_code',
+            'town', 'google_id_token']
         is_data_complete = validate_body_request_data(request.json, neccesary_data)
 
         if is_data_complete:
             
             # Check if RFC, CURP or google_email is already registered.
             physical_person_already_registered = []
+
+            is_authenticated, id_info = validate_google_id_token(request.json['google_id_token'], GOOGLE_CLIENT_ID)
+
+            if not is_authenticated :
+                # Usuario inválido.
+                pass
+            
 
             if request.json["CURP"] != "":
                 physical_person_curp = physical_persons_table.find_one({"CURP" : request.json["CURP"]})
@@ -36,10 +91,9 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY):
                 if physical_person_rfc is not None:
                     physical_person_already_registered.append("RFC")
 
-            if request.json["google_email"] != "":
-                physical_person_email = physical_persons_table.find_one({"google_email" : request.json["google_email"]})
-                if physical_person_email is not None:
-                    physical_person_already_registered.append("google_email")
+            physical_person_email = physical_persons_table.find_one({"google_email" : id_info["email"]})
+            if physical_person_email is not None:
+                physical_person_already_registered.append("google_email")
 
             if len(physical_person_already_registered) != 0:
                 resulting_response = make_response(
@@ -69,7 +123,8 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY):
                     }
                 ],
                 "actual_address" : 0,
-                "google_email" : request.json["google_email"]
+                "google_email" : id_info["email"]
+
             }
 
             insert_one_document(new_physical_person, physical_persons_table)
