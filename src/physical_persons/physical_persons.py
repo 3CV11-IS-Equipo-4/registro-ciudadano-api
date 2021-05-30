@@ -20,7 +20,7 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
     def login_physical_person():
         
         if 'google_id_token' not in request.json.keys():
-            return make_response({"authentication": "Sin id token"}, 400, {
+            return make_response({"authentication": False}, 400, {
                 'Access-Control-Allow-Origin': '*', 
                 'mimetype':'application/json'
                 })
@@ -28,7 +28,7 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
         is_authenticated, id_info = validate_google_id_token(request.json['google_id_token'], GOOGLE_CLIENT_ID)
 
         if not is_authenticated :
-            return make_response({"authentication": "ID no autenticado."}, 400, {
+            return make_response({"authentication": False}, 400, {
                 'Access-Control-Allow-Origin': '*', 
                 'mimetype':'application/json'
                 })
@@ -36,7 +36,7 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
         found_physical_person = physical_persons_table.find_one({'google_email' : id_info['email']})
 
         if found_physical_person is None:
-            return make_response({"authentication": "Persona no encontrada"}, 400, {
+            return make_response({"authentication": False}, 400, {
                 'Access-Control-Allow-Origin': '*', 
                 'mimetype':'application/json'
                 })
@@ -50,7 +50,7 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
         )
 
         if generated_token is None:
-            return make_response({"authentication": "Excepctión"}, 400, {
+            return make_response({"authentication": False}, 400, {
                 'Access-Control-Allow-Origin': '*', 
                 'mimetype':'application/json'
                 })
@@ -76,8 +76,12 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
             is_authenticated, id_info = validate_google_id_token(request.json['google_id_token'], GOOGLE_CLIENT_ID)
 
             if not is_authenticated :
-                # Usuario inválido.
-                pass
+                resulting_response = make_response((
+                    {"error" : "Invalid Google Account"},
+                    400,
+                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                ))
+                return resulting_response
             
 
             if request.json["CURP"] != "":
@@ -112,7 +116,6 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
                 "birth_date" : request.json["birth_date"],
                 "addresses" : [
                     {
-                        "id" : 1,
                         "street" : request.json["street"],
                         "extenal_number" : request.json["external_number"],
                         "internal_number" : request.json["internal_number"],
@@ -150,19 +153,29 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
 
         decoded_token = decode_auth_token_physical_person(request.headers["Authorization"].split()[1], SECRET_KEY)
         if decoded_token == -1:
-            return make_response({"error" : "Sesión expirada."}, 
+            return make_response({'error' : 'Invalid information'}, 
                                  400, 
                                  {'Access-Control-Allow-Origin': '*', 
                                     'mimetype':'application/json'})
         elif decoded_token == -2:
-            return make_response({"error" : "Ciudadano inválido"}, 
+            return make_response({'error' : 'Invalid information'}, 
                                  400, 
                                  {'Access-Control-Allow-Origin': '*', 
                                     'mimetype':'application/json'})
 
         else:          
 
-            physical_person_info = physical_persons_table.find_one({'_id' : ObjectId(id)})
+            try:
+                physical_person_info = physical_persons_table.find_one({'_id' : ObjectId(id)})
+            except:
+                resulting_response = make_response((
+                    {'error' : 'Invalid information'}, 
+                    400, 
+                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                ))
+                return resulting_response         
+
+            
             if physical_person_info is None:
                 resulting_response = make_response((
                     {'error' : 'Invalid information'}, 
@@ -181,7 +194,7 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
             
             return resulting_response
 
-    @physical_persons_bp.route('/physical_persons/<id>/addresses', methods=['PATCH'])
+    @physical_persons_bp.route('/physical_persons/<id>', methods=['PATCH'])
     def change_current_address(id):
         
         authorization_header_validation = validate_authorization(request)
@@ -262,7 +275,24 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
                     ))
                     return resulting_response
                 
-                physical_person_info = physical_persons_table.find_one({'_id' : ObjectId(id)})
+                try:
+                    physical_person_info = physical_persons_table.find_one({'_id' : ObjectId(id)})
+                except:
+                    resulting_response = make_response((
+                        {'error' : 'Invalid information'}, 
+                        400, 
+                        {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                    ))
+                    return resulting_response
+
+                if physical_person_info is None:
+                    resulting_response = make_response((
+                        {'error' : 'Invalid information'}, 
+                        400, 
+                        {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                    ))
+                    return resulting_response                    
+                
                 number_addresses = len(physical_person_info['addresses'])           
 
                 if request.json['previous_new_direction'] < 0 or request.json['previous_new_direction'] >= number_addresses:
