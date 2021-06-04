@@ -1,4 +1,5 @@
 from flask import Flask
+from flask_cors import CORS, cross_origin
 import pymongo
 from os import environ
 
@@ -25,6 +26,10 @@ try:
     database = client.get_database(DB_NAME)
 except:
     database = 'Example'
+
+# Manejo de CORS
+CORS(app, supoort_credentials=True)
+app.config['CORS_HEADERS'] = 'Content-Type'
 
 # Secret key.
 app.secret_key = SECRET_KEY
