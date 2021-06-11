@@ -14,6 +14,7 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
     physical_persons_bp = Blueprint('physical_persons_bp', __name__)
 
     physical_persons_table = database.physical_persons
+    moral_persons_table = database.moral_persons
 
     @physical_persons_bp.route('/prueba', methods=['GET'])
     def prueba():
@@ -48,11 +49,28 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
                 'mimetype':'application/json'
                 })
 
+        moral_persons_associated = []
+
+        moral_persons_admin_by_pp = moral_persons_table.find({'admins' : {'$elemMatch' : {'_id' : str(found_physical_person['_id']) }}})
+        for admin in moral_persons_admin_by_pp:
+            moral_persons_associated.append({
+                                            '_id' : str(admin['_id']), 'RFC' : admin['RFC'], 
+                                            'business_name' : admin['business_name'], 'is_admin' : True
+                                            })
+
+        moral_persons_repre_by_pp = moral_persons_table.find({'representatives' : {'$elemMatch' : {'_id' : str(found_physical_person['_id']) }}})
+        for r in moral_persons_repre_by_pp:
+            moral_persons_associated.append({
+                                            '_id' : str(r['_id']), 'RFC' : r['RFC'], 
+                                            'business_name' : r['business_name'], 'is_admin' : False
+                                            })
+
         generated_token = encode_auth_token_physical_person(
             id_info['email'],
             found_physical_person['names'],
             found_physical_person['first_surname'],
             found_physical_person['_id'],
+            moral_persons_associated,
             SECRET_KEY
         )
 
