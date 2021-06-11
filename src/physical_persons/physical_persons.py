@@ -15,6 +15,13 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
 
     physical_persons_table = database.physical_persons
 
+    @physical_persons_bp.route('/prueba', methods=['GET'])
+    def prueba():
+
+        return make_response(({'valor' : True, 'perrito' : 'Sí'}, 200, {
+                'Access-Control-Allow-Origin': '*', 
+                'mimetype':'application/json'
+                }))
 
     @physical_persons_bp.route('/physical_persons/login_google', methods=['POST'])
     def login_physical_person():
@@ -70,6 +77,15 @@ def build_physical_persons_blueprint(mongo_client, database, SECRET_KEY, GOOGLE_
 
         if is_data_complete:
             
+            # Check if RFC and CURP aren't empty.
+            if request.json['CURP'] == '' and request.json['RFC'] == '':
+                resulting_response = make_response((
+                    {"error" : "CURP and RFC cannot be empty"},
+                    400,
+                    {'Access-Control-Allow-Origin': '*', 'mimetype':'application/json'}
+                ))
+                return resulting_response                
+
             # Check if RFC, CURP or google_email is already registered.
             physical_person_already_registered = []
 
