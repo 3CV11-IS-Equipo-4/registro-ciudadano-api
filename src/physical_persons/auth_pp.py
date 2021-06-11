@@ -1,7 +1,7 @@
 import jwt
 import datetime
 
-def encode_auth_token_physical_person(email, names, first_surname, physical_person_id, SECRET_KEY):
+def encode_auth_token_physical_person(email, names, first_surname, physical_person_id, moral_persons, SECRET_KEY):
     """ Generates auth token for a physical persons.
 
     @type email: str
@@ -23,7 +23,8 @@ def encode_auth_token_physical_person(email, names, first_surname, physical_pers
                 'email' : email,
                 'names' : names,
                 'first_surname' : first_surname, 
-                '_id': str(physical_person_id)
+                '_id': str(physical_person_id),
+                'moral_persons' : moral_persons
                 }
         }
         
